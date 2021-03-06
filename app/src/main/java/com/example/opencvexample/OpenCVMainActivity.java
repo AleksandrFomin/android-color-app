@@ -19,10 +19,16 @@ import org.opencv.android.CameraBridgeViewBase.CvCameraViewListener2;
 import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
 import org.opencv.core.Core;
+import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.Point;
 import org.opencv.core.Scalar;
 import org.opencv.imgproc.Imgproc;
+
+import static org.opencv.core.CvType.CV_32FC3;
+import static org.opencv.core.CvType.CV_64FC1;
+import static org.opencv.core.CvType.CV_64FC3;
+import static org.opencv.core.CvType.CV_8UC3;
 
 
 public class OpenCVMainActivity extends Activity implements CvCameraViewListener2 {
@@ -94,11 +100,14 @@ public class OpenCVMainActivity extends Activity implements CvCameraViewListener
 //        if (tipoCamara){
 //        	camara = (CameraBridgeViewBase)findViewById(R.id.camara_nativa);
 //        }else{
-            camara = (CameraBridgeViewBase)findViewById(R.id.camara_java);
+            camara = (CameraBridgeViewBase) findViewById(R.id.camara_java);
 //        }
 
     	camara.setVisibility(SurfaceView.VISIBLE);
     	camara.setCvCameraViewListener(this);
+        camara.setMaxFrameSize(144, 176);
+        camara.disableView();
+        camara.enableView();
     	
     	
     }
@@ -232,7 +241,6 @@ public class OpenCVMainActivity extends Activity implements CvCameraViewListener
     
 
     public void onCameraViewStarted(int width, int height) {
-    	
     }
 
     public void onCameraViewStopped() {
@@ -242,67 +250,145 @@ public class OpenCVMainActivity extends Activity implements CvCameraViewListener
     
     
     public Mat onCameraFrame(CvCameraViewFrame frame) {
-    	
-    	if(modoGrises){
-    		//Modo Blanco y Negro
-    		return frame.gray();
-    	}else{
-    		
-    	
-	    	// Mat, para trabajar luego en el frame los pixels
-	    	Mat mat = frame.rgba();
-	    	
-	    	// PIXEL CENTRAL
-	    	int alto = altoCamara / 2;	//camera.getHeight() / 2;
-	        int ancho = anchoCamara / 2;	//camera.getWidth() / 2;
-	
-	    	//Recuperamos el color del pixel central
-	    	double[] color = mat.get(alto, ancho);
-	    	
-	    	//Log en consola para ver si saca los colores
-	    	//Log.i(TAG , "COLORES RGB -->"+ color[0] +";"+ color[1] +";"+ color[2] +"");
-	    	
-	    	//El color inverso, para pintar el crosshair y verlo siempre
-	    	double[] colorInverso = { 255 - color[0], 255 - color[1], 255 - color[2], 255};
-	    	
-	    	//START CROSSHAIR
-	
-	    	//Lineas Horizontales 
-            Imgproc.line(mat, new Point(0, altoCamara), new Point(anchoCamara - 25, altoCamara), new Scalar(colorInverso[0], colorInverso[1], colorInverso[2]), 1, 1, 1); //Izquierda
-            Imgproc.line(mat, new Point(anchoCamara + 25, altoCamara), new Point(anchoCamara + anchoCamara, altoCamara), new Scalar(colorInverso[0], colorInverso[1], colorInverso[2]), 1, 1, 1); //Derecha
-	    	
-	    	//Lineas Verticales
-            Imgproc.line(mat, new Point(anchoCamara, 0), new Point(anchoCamara, altoCamara - 25), new Scalar(colorInverso[0], colorInverso[1], colorInverso[2]), 1, 1, 1); //Top
-            Imgproc.line(mat, new Point(anchoCamara, altoCamara + 25), new Point(anchoCamara, altoCamara + altoCamara), new Scalar(colorInverso[0], colorInverso[1], colorInverso[2]), 1, 1, 1); //Bottom
-	    	
-	    	//Circulo interno
-            Imgproc.circle(mat, new Point(ancho, alto), 3, new Scalar(colorInverso[0], colorInverso[1], colorInverso[2]), -1);
-	    	
-	    	//Circulo externo
-            Imgproc.circle(mat, new Point(ancho, alto), 50, new Scalar(colorInverso[0], colorInverso[1], colorInverso[2]), 1);
-	    	//FIN CROSSHAIR
-	
-	    	
-	    	//TEXTO
-	    	//Texto generado en cada frame con el color en BGR (float)
-	    	//S�, BGR, OpenCV maneja los colores como Blue Green Red, no como Red Green Blue
-	    	String texto = "RGB: " + color[0] + " " + color[1] + " " + color[2];
-	    	//Core.putText(img, text, org, fontFace, fontScale, color);
-            Imgproc.putText(mat, texto, new Point(10, 50), 3, 1, new Scalar(255, 255, 255, 255), 2);
-	    	
-	    	//Texto Color Nombre
-	    	String nombreColor = getColorName(color[0], color[1], color[2]);
-            Imgproc.putText(mat, nombreColor, new Point(ancho, 50), 3, 1, new Scalar(255, 255, 255, 255), 2);
-	    	
-	    	//Rect�ngulo coloreado del color actual
-	    	//Core.rectangle(img, pt1, pt2, color, thickness);
-	    	// Si thickness < 0, hace un fill del rect�ngulo (Lo rellena)
-            Imgproc.rectangle(mat, new Point( 10 , 80), new Point(anchoCamara - 10, 100), new Scalar(color[0], color[1], color[2], 255), -1); //Al pintar, usamos RGBA
-	    	
+        Mat ImageMat = frame.rgba();
+        Mat ImageMatRGB = new Mat();
+        Imgproc.cvtColor(ImageMat, ImageMatRGB, Imgproc.COLOR_RGBA2RGB); //8UC3
 
-	        return mat;
-    	}
-        
+//        return ImageMatRGB;
+        //Transformation matrix for Deuteranope (a form of red/green color deficit)
+        double lms2lmsd1[] = {1,0,0,0.494207,0,1.24827,0,0,1};
+        Mat lms2lmsd = new Mat(3,3,CV_64FC1);
+        lms2lmsd.put(0,0,lms2lmsd1);
+
+        //Transformation matrix for Protanope (another form of red/green color deficit)
+        double lms2lmsp1[] = {0,2.02344,-2.52581,0,1,0,0,0,1};
+        Mat lms2lmsp = new Mat(3,3,CV_64FC1);
+        lms2lmsp.put(0,0,lms2lmsp1);
+
+        //Transformation matrix for Tritanope (a blue/yellow deficit - very rare)
+        double lms2lmst1[] = {1,0,0,0,1,0,-0.395913,0.801109,0};
+        Mat lms2lmst = new Mat(3,3,CV_64FC1);
+        lms2lmst.put(0,0,lms2lmst1);
+
+        //Colorspace transformation matrices
+//        double rgb2lms1[] = {17.8824,43.5161,4.11935,3.45565,27.1554,3.86714,0.0299566,0.184309,1.46709};
+        double rgb2lms1[] = {1.46709, 0.184309, 0.0299566, 3.86714, 27.1554, 3.45565, 4.11935, 43.5161, 17.8824};
+        Mat rgb2lms = new Mat(3,3,CV_64FC1);
+        rgb2lms.put(0,0,rgb2lms1);
+        Mat lms2rgb = rgb2lms.inv();
+
+        //Daltonize image correction matrix
+        double err2mod1[] = {0,0,0,0.7,1,0,0.7,0,1};
+        Mat err2mod = new Mat(3,3,CV_64FC1);
+        err2mod.put(0,0,err2mod1);
+
+        //CHANGE ACCORDING TO TYPE OF COLOR BLINDNESS
+        Mat lms2lms_deficit = lms2lmsd;
+
+        Mat LMS = new Mat(ImageMatRGB.rows(),ImageMatRGB.cols(), CvType.CV_64FC3);
+        Mat _LMS = LMS;
+        Mat _RGB = LMS;
+        Mat ERR = LMS;
+        int i,j;
+
+        double actRGBVal[];
+        double tempRGB[];
+        Mat lmsval = new Mat(1,1,CV_64FC3);
+        Mat lmsResVec = new Mat();
+        Mat actRGBVec = new Mat(3,1,CV_64FC1);
+        try {
+            for (i = 0; i < ImageMatRGB.rows(); i++) {
+                for (j = 0; j < ImageMatRGB.cols(); j++) {
+                    actRGBVal = ImageMatRGB.get(i, j);
+                    actRGBVec.put(0, 0, actRGBVal);
+                    Core.gemm(rgb2lms, actRGBVec, 1, new Mat(), 0, lmsResVec, 0);
+                    double lmsvaldata[] = {lmsResVec.get(0,0)[0],lmsResVec.get(1,0)[0],lmsResVec.get(2,0)[0]};
+                    LMS.put(i,j,lmsvaldata);
+                }
+            }
+        }
+        catch (Exception e){
+            Log.d("ImageHandler","Error rgb to lms conversion! " + e.getMessage());
+        }
+
+
+        try {
+            for (i = 0; i < ImageMatRGB.rows(); i++) {
+                for (j = 0; j < ImageMatRGB.cols(); j++) {
+                    actRGBVal = LMS.get(i, j);
+                    actRGBVec.put(0, 0, actRGBVal);
+                    Core.gemm(lms2lms_deficit, actRGBVec, 1, new Mat(), 0, lmsResVec, 0);
+                    double lmsvaldata[] = {lmsResVec.get(0,0)[0],lmsResVec.get(1,0)[0],lmsResVec.get(2,0)[0]};
+                    _LMS.put(i,j,lmsvaldata);
+                }
+            }
+        }
+        catch (Exception e){
+            Log.d("ImageHandler","Error rgb to lms conversion! " + e.getMessage());
+        }
+
+        try {
+            for (i = 0; i < ImageMatRGB.rows(); i++) {
+                for (j = 0; j < ImageMatRGB.cols(); j++) {
+                    actRGBVal = _LMS.get(i,j);
+                    actRGBVec.put(0, 0, actRGBVal);
+                    Core.gemm(lms2rgb, actRGBVec, 1, new Mat(), 0, lmsResVec, 0);
+                    double lmsvaldata[] = {lmsResVec.get(0,0)[0],lmsResVec.get(1,0)[0],lmsResVec.get(2,0)[0]};
+                    _RGB.put(i,j,lmsvaldata);
+                }
+            }
+        }
+        catch (Exception e){
+            Log.d("ImageHandler","Error rgb to lms conversion! " + e.getMessage());
+        }
+
+        Mat error = new Mat(ImageMatRGB.rows(),ImageMatRGB.cols(), CV_64FC3);
+
+        Core.subtract(ImageMatRGB,_RGB,error,new Mat(),CV_64FC3);
+
+        try {
+            for (i = 0; i < ImageMatRGB.rows(); i++) {
+                for (j = 0; j < ImageMatRGB.cols(); j++) {
+                    actRGBVal = error.get(i,j);
+                    actRGBVec.put(0, 0, actRGBVal);
+                    Core.gemm(err2mod, actRGBVec, 1, new Mat(), 0, lmsResVec, 0);
+                    double lmsvaldata[] = {lmsResVec.get(0,0)[0],lmsResVec.get(1,0)[0],lmsResVec.get(2,0)[0]};
+                    ERR.put(i,j,lmsvaldata);
+                }
+            }
+        }
+        catch (Exception e){
+            Log.d("ImageHandler","Error rgb to lms conversion! " + e.getMessage());
+        }
+
+        Mat dtpn = new Mat(ImageMatRGB.rows(),ImageMatRGB.cols(), CV_64FC3);
+
+        Core.add(ERR,ImageMatRGB,dtpn,new Mat(),CV_64FC3);
+
+        dtpn.convertTo(dtpn,CV_32FC3);
+        dtpn.convertTo(dtpn,CV_8UC3,255.0);
+
+
+        try {
+            for (i = 0; i < ImageMatRGB.rows(); i++) {
+                for (j = 0; j < ImageMatRGB.cols(); j++) {
+                    actRGBVal = dtpn.get(i, j);
+                    actRGBVal[0] = (actRGBVal[0] > 0) ? actRGBVal[0] : 0;
+                    actRGBVal[0] = (actRGBVal[0] < 255) ? actRGBVal[0] : 255;
+                    actRGBVal[1] = (actRGBVal[1] > 0) ? actRGBVal[1] : 0;
+                    actRGBVal[1] = (actRGBVal[1] < 255) ? actRGBVal[1] : 255;
+                    actRGBVal[2] = (actRGBVal[2] > 0) ? actRGBVal[2] : 0;
+                    actRGBVal[2] = (actRGBVal[2] < 255) ? actRGBVal[2] : 255;
+                    dtpn.put(i,j, actRGBVal);
+                }
+            }
+        }
+        catch (Exception e){
+            Log.d("ImageHandler","Error rgb to lms conversion! " + e.getMessage());
+        }
+
+        Imgproc.cvtColor(dtpn, dtpn, Imgproc.COLOR_RGB2RGBA); //8UC3
+        return dtpn;
     }
 
 
